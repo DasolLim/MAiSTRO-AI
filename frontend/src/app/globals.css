@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/*
+  MAiSTRO is used by a solo composer feeding datasets and watching a training
+  run tick through epochs at night: low glare, half-attention on a loss curve.
+  That scene is why this commits to a single dark, ink-and-brass theme rather
+  than switching on prefers-color-scheme.
+*/
+
+:root {
+  --color-bg: oklch(16% 0.02 260);
+  --color-surface: oklch(20% 0.02 260);
+  --color-surface-raised: oklch(24% 0.02 260);
+  --color-foreground: oklch(92% 0.012 90);
+  --color-muted-foreground: oklch(66% 0.02 260);
+  --color-border: oklch(38% 0.02 260 / 40%);
+
+  --color-brass: oklch(74% 0.1 80);
+  --color-brass-foreground: oklch(16% 0.02 260);
+  --color-verdigris: oklch(64% 0.09 175);
+  --color-verdigris-foreground: oklch(16% 0.03 175);
+  --color-destructive: oklch(56% 0.13 25);
+  --color-destructive-foreground: oklch(96% 0.01 25);
+
+  --font-display: var(--font-playfair);
+  --font-sans: var(--font-inter);
+}
+
+@theme inline {
+  --color-bg: var(--color-bg);
+  --color-surface: var(--color-surface);
+  --color-surface-raised: var(--color-surface-raised);
+  --color-foreground: var(--color-foreground);
+  --color-muted-foreground: var(--color-muted-foreground);
+  --color-border: var(--color-border);
+  --color-brass: var(--color-brass);
+  --color-brass-foreground: var(--color-brass-foreground);
+  --color-verdigris: var(--color-verdigris);
+  --color-verdigris-foreground: var(--color-verdigris-foreground);
+  --color-destructive: var(--color-destructive);
+  --color-destructive-foreground: var(--color-destructive-foreground);
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+/* Tabular figures for epoch counters, loss values, durations. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
