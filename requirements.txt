@@ -19,8 +19,11 @@ pydub~=0.25.1
 pyfluidsynth
 
 # Deep Learning (LSTM Model)
+# Apple Silicon never got official arm64 wheels for plain `tensorflow` 2.10;
+# Apple publishes that version under `tensorflow-macos` instead.
 keras~=2.10.0
-tensorflow~=2.10.0
+tensorflow~=2.10.0; platform_system != "Darwin" or platform_machine != "arm64"
+tensorflow-macos~=2.10.0; platform_system == "Darwin" and platform_machine == "arm64"
 keras-self-attention
 scikit-learn~=1.3.2
 
@@ -29,3 +32,8 @@ pyqtgraph
 PyQt5
 cmasher~=1.9.2
 rtmidi~=2.5.0
+
+# Web API (backend for the TypeScript frontend)
+fastapi~=0.115
+uvicorn[standard]~=0.32
+python-multipart~=0.0.12
