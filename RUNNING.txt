@@ -1,0 +1,142 @@
+MAiSTRO — HOW TO RUN THE PROGRAM
+=================================
+
+There are two parts that both need to be running at once:
+  1. The backend  (Python / FastAPI)  — serves http://localhost:8000
+  2. The frontend (Next.js)           — serves http://localhost:3000
+
+Each one runs in its own terminal window and keeps running while you use the app.
+
+
+-----------------------------------------------------------------------------
+ONE-TIME SETUP (only needed once, or again if you delete .venv / node_modules)
+-----------------------------------------------------------------------------
+
+1. Python version
+   This project's ML libraries (TensorFlow 2.10 / Keras 2.10) need Python 3.10.
+   Newer Python (3.11+) will NOT work.
+
+   If you don't already have Python 3.10 available:
+     brew install pyenv
+     pyenv install 3.10.14
+     cd /Users/daviddrowl/MAiSTRO
+     pyenv local 3.10.14
+
+   Add pyenv to your shell once (if not already done), then restart your terminal:
+     echo 'eval "$(pyenv init - zsh)"' >> ~/.zshrc
+     source ~/.zshrc
+
+   Confirm it worked:
+     cd /Users/daviddrowl/MAiSTRO
+     python3 --version
+     -> should print Python 3.10.14
+
+2. Backend dependencies
+     cd /Users/daviddrowl/MAiSTRO
+     python3 -m venv .venv
+     source .venv/bin/activate
+     pip install --upgrade pip
+     pip install -r requirements.txt
+
+   This installs TensorFlow, PyQt5, FastAPI, and everything else. It's a heavy
+   install (TensorFlow alone is ~200MB) and takes a few minutes.
+
+   Apple Silicon note: requirements.txt already handles this automatically —
+   it installs `tensorflow-macos` instead of plain `tensorflow` on arm64 Macs,
+   since TensorFlow 2.10 never shipped official Apple Silicon wheels under the
+   plain package name.
+
+3. ffmpeg (needed to render generated MIDI into playable audio)
+     brew install ffmpeg
+
+4. Frontend dependencies
+     cd /Users/daviddrowl/MAiSTRO/frontend
+     npm install
+
+
+-----------------------------------------------------------------------------
+RUNNING IT (every time)
+-----------------------------------------------------------------------------
+
+TERMINAL 1 — Backend:
+     cd /Users/daviddrowl/MAiSTRO
+     source .venv/bin/activate
+     uvicorn api.main:app --reload --port 8000
+
+   Confirm it's up:
+     curl http://localhost:8000/health
+     -> should return {"status":"ok"}
+
+TERMINAL 2 — Frontend:
+     cd /Users/daviddrowl/MAiSTRO/frontend
+     npm run dev
+
+Then open http://localhost:3000 in your browser.
+
+Leave both terminals running the whole time you're using the app. Ctrl+C in
+either one stops that half. The frontend calls the backend on every action
+(upload, prepare dataset, train, generate, listen), so if the backend isn't
+running you'll see connection errors in the browser.
+
+
+-----------------------------------------------------------------------------
+USING THE APP
+-----------------------------------------------------------------------------
+
+The four movements, in order:
+  I.   Prepare  (/dataset)  — upload .mid files, parse them into the note
+                              sequence the model trains on
+  II.  Train    (/train)    — set epochs/batch size, start training, watch
+                              live epoch/loss progress
+  III. Generate (/generate) — sample a new composition from the trained model
+  IV.  Listen   (/library)  — render generated MIDI to audio and play it back
+
+
+-----------------------------------------------------------------------------
+THE ORIGINAL DESKTOP APP (pygame)
+-----------------------------------------------------------------------------
+
+The original pygame-based interface still works, independently of the two
+servers above, from the same Python environment:
+     cd /Users/daviddrowl/MAiSTRO
+     source .venv/bin/activate
+     python -m backend.legacy_gui.audio_to_spectrogram
+
+
+-----------------------------------------------------------------------------
+TROUBLESHOOTING
+-----------------------------------------------------------------------------
+
+"ModuleNotFoundError: No module named 'numpy'" (or similar) when starting
+uvicorn:
+  Your venv was probably created with the wrong Python version. Delete it and
+  recreate it while python3 --version (see setup step 1) reports 3.10.14:
+     deactivate
+     rm -rf .venv
+     python3 -m venv .venv
+     source .venv/bin/activate
+     ls .venv/bin | grep python   -> should show python3.10, not python3.14
+     pip install -r requirements.txt
+
+`uvicorn` command runs the wrong Python even though (.venv) is active:
+  Your shell cached an old path for the command. Fix with:
+     hash -r
+     which uvicorn   -> should print /Users/daviddrowl/MAiSTRO/.venv/bin/uvicorn
+  Or just sidestep it entirely:
+     python -m uvicorn api.main:app --reload --port 8000
+
+scipy / tensorflow fails to build from source with a Fortran/meson error:
+  This means pip is using the wrong Python (not 3.10). See the first item above.
+
+Images or audio clips on the home page don't show up after you add the files:
+  This is almost always browser caching, not a server problem. Try, in order:
+     1. Hard refresh: Cmd+Shift+R
+     2. DevTools > Application > Service Workers > Unregister, then refresh
+     3. Open http://localhost:3000 in an Incognito window to rule out cache
+     You can confirm the server itself is fine with:
+     curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/media/diagrams/pipeline.png
+     -> should print 200
+
+pydub prints "Couldn't find ffmpeg or avconv" warning:
+  Harmless until you actually try to render/play audio (the Listen step).
+  Fix with: brew install ffmpeg
