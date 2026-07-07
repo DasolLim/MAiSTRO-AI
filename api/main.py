@@ -9,6 +9,9 @@ app = FastAPI(title="MAiSTRO API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
+    # Vercel preview URLs are generated per-deployment (e.g. maistro-git-main-you.vercel.app),
+    # so match the domain pattern rather than hardcoding one.
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_methods=["*"],
     allow_headers=["*"],
 )
