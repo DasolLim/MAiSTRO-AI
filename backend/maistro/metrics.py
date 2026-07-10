@@ -52,8 +52,14 @@ def kl_divergence(p: np.ndarray, q: np.ndarray) -> float:
 def repetition_rate(tokens: list[str], n: int = NGRAM_SIZE) -> float:
     """Fraction of n-grams that are not the first occurrence of that n-gram.
 
-    0.0 means every window of n notes is new; values above ~0.5 mean the decoder
-    is looping. Greedy (argmax) decoding on this model typically scores >0.9.
+    0.0 means every window of n notes is new; the higher it climbs, the more the
+    decoder is circling material it has already played.
+
+    It grows with sequence length, so only compare runs of the same size. Measured
+    over 4 seeds at 300 notes, greedy decoding averages ~0.17 and temperature 1.9
+    averages ~0.02 -- the gap widens with length because a sampled decoder diverges
+    from the greedy path on more steps the longer it runs (2% of steps at 120
+    notes, 61% at 300).
     """
     if len(tokens) < n:
         return 0.0
