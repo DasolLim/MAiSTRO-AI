@@ -1,0 +1,12 @@
+# Dependencies for the deployed serverless API. Deliberately tiny.
+#
+#   fastapi + numpy + mido  ==  ~31MB unpacked
+#   TensorFlow alone        ==  877MB, and needs Python <=3.10 (Vercel runs 3.12)
+#
+# Inference is a dozen matmuls (see maistro/npmodel.py), so nothing here needs a
+# deep-learning framework. Training does, and training does not happen in a
+# serverless function.
+
+fastapi>=0.115
+numpy>=1.26
+mido>=1.3
