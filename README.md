@@ -147,12 +147,15 @@ MAiSTRO composes *notes*. That is the right representation for classical piano a
 |---|---|---|
 | **What** | Text prompt → audio waveform | Melody continuation, note by note |
 | **How it models music** | Transformer over an audio codec's latent tokens | RNN over symbolic notes — same task as MAiSTRO |
-| **Where it runs** | Python backend, CPU or GPU | The visitor's browser, via TensorFlow.js |
+| **Loaded via** | Hugging Face `transformers` (not `audiocraft`) | `@magenta/music` + TensorFlow.js |
+| **Where it runs** | Python backend, CPU / CUDA / Apple MPS | The visitor's browser |
 | **Cost** | Free. Local weights, no API key, no per-request charge | Free. Public checkpoint, no server cost at all |
-| **Trade-off** | ~2GB download; never yields an editable score | A few MB on first use; needs a network connection |
+| **Trade-off** | ~2GB torch + ~2GB weights; ~3s of CPU per second of audio; never yields an editable score | A few MB on first use; needs a network connection |
 | **Install** | Optional: `pip install -r requirements-external.txt` | Bundled; dynamically imported |
 
-Neither is an API service. MusicGen downloads its weights from Hugging Face on first run and executes locally; the endpoints return a `503` with install instructions until it's present. Magenta fetches its checkpoint from a public Google Cloud bucket and runs inference on the user's own GPU.
+Neither is an API service. MusicGen downloads `facebook/musicgen-small` from Hugging Face on first run and executes locally; the endpoints return a `503` with install instructions until it's present. Magenta fetches its checkpoint from a public Google Cloud bucket and runs inference on the user's own GPU.
+
+> MusicGen is loaded through Hugging Face rather than Meta's own `audiocraft` library, because `audiocraft` depends on `xformers` — which publishes no arm64 macOS wheel and needs torch importable just to resolve its build metadata, so it cannot be installed on Apple Silicon at all. `MusicgenForConditionalGeneration` loads the identical checkpoints with no `xformers` anywhere.
 
 > **Is MusicGen comparable to MAiSTRO?** No, and it would be misleading to benchmark them. It generates audio, not notes, so none of the metrics above can be computed without a transcription step that would swamp the result. It's a *contrast piece* — it makes the choice of a symbolic model explicit. **Magenta's MelodyRNN is comparable**: same task, same output space, so the same metrics apply directly.
 
@@ -193,7 +196,8 @@ Optional extras:
 
 ```bash
 brew install ffmpeg                              # WAV rendering
-pip install -r requirements-external.txt         # MusicGen (~2GB of weights on first run)
+pip install -r requirements-external.txt         # MusicGen: torch + transformers (~2GB),
+                                                 # then ~2GB of weights on first generation
 ```
 
 **On checkpoints and data.** The parsed note vocabulary (`data/notes`, 194k tokens) *is* committed, so you can train a model immediately without sourcing any MIDI files. Trained weights are **not** in version control — the `lstm_attention` checkpoint is 1.4GB — so `/generate` will report that no weights were found until you either train one (`/train`, or `train_model()`) or drop a `.keras` file into `checkpoints/<arch>/`. The transformer trains fastest by a wide margin.

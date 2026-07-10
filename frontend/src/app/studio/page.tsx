@@ -67,7 +67,11 @@ export default function StudioPage() {
                 />
               </Field>
 
-              <Field label="Duration" hint={`Up to ${status.max_duration}s. CPU runs near real time.`}>
+              {/* Measured on musicgen-small, CPU: ~3.5x slower than real time. */}
+              <Field
+                label="Duration"
+                hint={`Up to ${status.max_duration}s. On CPU expect roughly 3s of compute per second of audio.`}
+              >
                 <Slider
                   value={duration}
                   onChange={setDuration}

@@ -1,15 +1,22 @@
 # Optional: text-to-audio generation via Meta's MusicGen (the Studio page).
 #
-# This is a separate file because it pulls in torch and downloads several GB of
-# model weights on first run. Nothing in the core MAiSTRO pipeline needs it, and
-# the /external/musicgen endpoints degrade to a clear 503 when it is absent.
+# Separate from requirements.txt because torch is a ~2GB install and the model
+# weights are another ~2GB on first run. Nothing in the core MAiSTRO pipeline
+# needs any of it, and /external/musicgen returns a clear 503 when it is absent.
 #
 #   pip install -r requirements-external.txt
 #
-# Note: audiocraft targets a newer torch than the TensorFlow 2.10 pin used for
-# the LSTM. Installing it in a separate virtualenv from the training environment
-# is the safe choice; the API only needs it importable at request time.
+# Why transformers and not `audiocraft`, Meta's own library:
+#
+#   audiocraft depends on xformers, which publishes no arm64 macOS wheel and
+#   requires torch to already be importable just to resolve its build metadata.
+#   On Apple Silicon `pip install audiocraft` fails outright. Hugging Face's
+#   MusicgenForConditionalGeneration loads the identical facebook/musicgen-*
+#   checkpoints with no xformers anywhere, and runs on CPU, CUDA or Apple MPS.
+#
+# These versions coexist with the TensorFlow 2.10 pin used for the LSTM: torch
+# brings its own runtime and transformers is happy with the numpy 1.26 already
+# required by requirements.txt.
 
-torch>=2.1.0
-torchaudio>=2.1.0
-audiocraft>=1.3.0
+torch>=2.2
+transformers>=4.31
