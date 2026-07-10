@@ -1,65 +1,34 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  getDatasetStats,
-  pollJob,
-  prepareDataset,
-  uploadMidiFiles,
-  type DatasetStats,
-  type JobStatus,
-} from "@/lib/api";
+import { useMutation } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { uploadMidiFiles } from "@/lib/api";
+import { useDatasetStats, usePrepareDataset } from "@/lib/useJob";
 import { StaffDivider } from "@/components/StaffDivider";
 import { JobLog } from "@/components/JobLog";
 import { ProgressBar } from "@/components/ProgressBar";
 
-interface PrepareResult {
-  midi_file_count: number;
-  note_count: number;
-  vocab_size: number;
-}
-
 export default function DatasetPage() {
-  const [stats, setStats] = useState<DatasetStats | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [job, setJob] = useState<JobStatus<PrepareResult> | null>(null);
-  const stopPolling = useRef<() => void>(() => {});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const refreshStats = useCallback(() => {
-    getDatasetStats().then(setStats).catch(() => setStats(null));
-  }, []);
+  const { data: stats, refetch: refreshStats } = useDatasetStats();
+  const prepare = usePrepareDataset();
 
-  useEffect(() => {
-    refreshStats();
-    return () => stopPolling.current();
-  }, [refreshStats]);
+  const upload = useMutation({
+    mutationFn: uploadMidiFiles,
+    onSuccess: () => refreshStats(),
+  });
 
-  const handleFiles = async (fileList: FileList | null) => {
+  const handleFiles = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     const midiFiles = Array.from(fileList).filter((f) => /\.midi?$/i.test(f.name));
-    if (midiFiles.length === 0) return;
-
-    setUploading(true);
-    try {
-      await uploadMidiFiles(midiFiles);
-      refreshStats();
-    } finally {
-      setUploading(false);
-    }
+    if (midiFiles.length > 0) upload.mutate(midiFiles);
   };
 
-  const handlePrepare = () => {
-    prepareDataset().then(({ job_id }) => {
-      stopPolling.current = pollJob<PrepareResult>(job_id, (update) => {
-        setJob(update);
-        if (update.state === "done") refreshStats();
-      });
-    });
-  };
-
-  const isRunning = job?.state === "running" || job?.state === "pending";
+  const job = prepare.job;
+  const isRunning = prepare.isRunning;
+  const uploading = upload.isPending;
 
   return (
     <div>
@@ -119,13 +88,15 @@ export default function DatasetPage() {
           )}
         </p>
         <button
-          onClick={handlePrepare}
+          onClick={() => prepare.start(false)}
           disabled={isRunning || !stats || stats.midi_file_count === 0}
           className="shrink-0 cursor-pointer border border-brass px-5 py-2.5 text-sm font-medium text-brass transition-colors hover:bg-brass hover:text-brass-foreground disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground disabled:hover:bg-transparent"
         >
           {isRunning ? "Preparing…" : "Prepare dataset"}
         </button>
       </div>
+
+      {upload.error && <p className="mt-4 text-sm text-destructive">{upload.error.message}</p>}
 
       {job && (
         <div className="mt-6">
