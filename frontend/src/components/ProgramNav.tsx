@@ -8,6 +8,8 @@ const MOVEMENTS = [
   { numeral: "II", label: "Train", href: "/train" },
   { numeral: "III", label: "Generate", href: "/generate" },
   { numeral: "IV", label: "Listen", href: "/library" },
+  { numeral: "V", label: "Arena", href: "/arena" },
+  { numeral: "VI", label: "Studio", href: "/studio" },
 ] as const;
 
 export function ProgramNav() {
@@ -23,7 +25,7 @@ export function ProgramNav() {
           </span>
         </Link>
 
-        <nav aria-label="Program" className="flex gap-6 sm:gap-8">
+        <nav aria-label="Program" className="flex flex-wrap gap-x-6 gap-y-3 sm:gap-x-7">
           {MOVEMENTS.map((movement) => {
             const active = pathname?.startsWith(movement.href);
             return (

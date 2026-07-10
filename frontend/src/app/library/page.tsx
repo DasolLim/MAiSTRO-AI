@@ -1,20 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getLibrary, type LibraryTrack } from "@/lib/api";
 import { StaffDivider } from "@/components/StaffDivider";
 import { TrackRow } from "@/components/TrackRow";
+import { useLibrary } from "@/lib/useJob";
 
 export default function LibraryPage() {
-  const [tracks, setTracks] = useState<LibraryTrack[] | null>(null);
-
-  const refresh = () => {
-    getLibrary().then(({ tracks }) => setTracks(tracks));
-  };
-
-  useEffect(() => {
-    refresh();
-  }, []);
+  const { data, isLoading, error } = useLibrary();
+  const tracks = data?.tracks;
 
   return (
     <div>
@@ -23,13 +15,18 @@ export default function LibraryPage() {
       </p>
       <h1 className="mt-3 font-display text-4xl text-foreground">The listening room</h1>
       <p className="mt-4 max-w-[65ch] text-muted-foreground">
-        Everything the model has composed so far. New compositions need to be rendered to
-        audio once before they can be played back.
+        Everything the model has composed so far. Each piece plays straight from its MIDI,
+        synthesised in your browser, and carries the settings and seed that produced it.
       </p>
 
       <StaffDivider className="mt-10" />
 
-      {tracks === null && <p className="mt-8 text-sm text-muted-foreground">Loading…</p>}
+      {isLoading && <p className="mt-8 text-sm text-muted-foreground">Loading…</p>}
+      {error && (
+        <p className="mt-8 text-sm text-destructive">
+          Could not reach the API. Is the backend running on port 8000?
+        </p>
+      )}
       {tracks?.length === 0 && (
         <p className="mt-8 text-sm text-muted-foreground">
           No compositions yet. Generate one from the Generate movement.
@@ -38,7 +35,7 @@ export default function LibraryPage() {
       {tracks && tracks.length > 0 && (
         <ul className="mt-2 divide-y divide-border">
           {tracks.map((track) => (
-            <TrackRow key={track.midi_filename} track={track} onRendered={refresh} />
+            <TrackRow key={track.midi_filename} track={track} />
           ))}
         </ul>
       )}

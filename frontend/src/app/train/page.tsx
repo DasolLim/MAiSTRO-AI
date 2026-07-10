@@ -1,14 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { pollJob, startTraining, type JobStatus } from "@/lib/api";
+import { useState } from "react";
+import { Field, Select } from "@/components/Controls";
+import { useGenerateOptions, useTrain } from "@/lib/useJob";
 import { StaffDivider } from "@/components/StaffDivider";
 import { JobLog } from "@/components/JobLog";
 import { ProgressBar } from "@/components/ProgressBar";
-
-interface TrainResult {
-  checkpoint_path: string;
-}
 
 interface LossReading {
   label: string;
@@ -69,21 +66,25 @@ const READING_STAGES = [
 ] as const;
 
 export default function TrainPage() {
+  const [arch, setArch] = useState<string | null>(null);
   const [epochs, setEpochs] = useState(5);
   const [batchSize, setBatchSize] = useState(64);
-  const [job, setJob] = useState<JobStatus<TrainResult> | null>(null);
-  const stopPolling = useRef<() => void>(() => {});
 
-  const isRunning = job?.state === "running" || job?.state === "pending";
-  const progress = job?.progress as { epoch?: number; total_epochs?: number; loss?: number } | undefined;
+  const { data: options } = useGenerateOptions();
+  const training = useTrain();
+
+  const job = training.job;
+  const isRunning = training.isRunning;
+  const selectedArch = arch ?? options?.default_architecture ?? "lstm_attention";
+  const archSpec = options?.architectures.find((a) => a.key === selectedArch);
+
+  const progress = job?.progress as
+    | { epoch?: number; total_epochs?: number; loss?: number; val_loss?: number | null }
+    | undefined;
   const fraction = progress?.epoch && progress?.total_epochs ? progress.epoch / progress.total_epochs : 0;
-
-  const handleStart = () => {
-    stopPolling.current();
-    startTraining(epochs, batchSize).then(({ job_id }) => {
-      stopPolling.current = pollJob<TrainResult>(job_id, setJob);
-    });
-  };
+  // Validation loss is the honest signal: training loss keeps falling long after
+  // the model has started memorising 200 MIDI files.
+  const judgedLoss = progress?.val_loss ?? progress?.loss;
 
   return (
     <div>
@@ -92,11 +93,29 @@ export default function TrainPage() {
       </p>
       <h1 className="mt-3 font-display text-4xl text-foreground">Rehearsal</h1>
       <p className="mt-4 max-w-[65ch] text-muted-foreground">
-        Fit the LSTM and self-attention network on the prepared notes. Checkpoints are saved
-        every five epochs, so you can generate from a partially trained run.
+        Fit one of the three architectures on the prepared notes. A tenth of the corpus is held
+        out for validation, and checkpoints are saved every five epochs into{" "}
+        <code className="text-foreground">checkpoints/{selectedArch}/</code>, so models never
+        overwrite each other and any two can meet in the arena.
       </p>
 
       <StaffDivider className="mt-10" />
+
+      {options && (
+        <div className="mt-8 max-w-md">
+          <Field label="Architecture" hint={archSpec?.description}>
+            <Select
+              value={selectedArch}
+              onChange={setArch}
+              disabled={isRunning}
+              options={options.architectures.map((a) => ({
+                value: a.key,
+                label: a.trained ? `${a.label} — trained` : a.label,
+              }))}
+            />
+          </Field>
+        </div>
+      )}
 
       <div className="mt-8 flex flex-wrap items-end gap-8">
         <label className="flex flex-col gap-1.5">
@@ -126,13 +145,15 @@ export default function TrainPage() {
           />
         </label>
         <button
-          onClick={handleStart}
+          onClick={() => training.start({ arch: selectedArch, epochs, batchSize })}
           disabled={isRunning}
           className="cursor-pointer border border-brass px-5 py-2.5 text-sm font-medium text-brass transition-colors hover:bg-brass hover:text-brass-foreground disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground disabled:hover:bg-transparent"
         >
           {isRunning ? "Training…" : "Start training"}
         </button>
       </div>
+
+      {training.error && <p className="mt-6 text-sm text-destructive">{training.error.message}</p>}
 
       {job && (
         <div className="mt-10">
@@ -144,23 +165,24 @@ export default function TrainPage() {
                 </span>
                 <span className="text-muted-foreground tabular-nums">
                   loss {progress.loss?.toFixed(4)}
+                  {progress.val_loss != null && ` · val ${progress.val_loss.toFixed(4)}`}
                 </span>
               </div>
               <div className="mt-3">
                 <ProgressBar fraction={fraction} />
               </div>
-              {progress.loss !== undefined && (
+              {judgedLoss !== undefined && (
                 <p className="mt-3 text-sm text-muted-foreground">
-                  <span className="font-display italic text-brass">{readLoss(progress.loss).label}</span>
+                  <span className="font-display italic text-brass">{readLoss(judgedLoss).label}</span>
                   {", "}
-                  {readLoss(progress.loss).note}
+                  {readLoss(judgedLoss).note}
                 </p>
               )}
             </>
           )}
           {job.state === "done" && job.result && (
             <p className="text-sm text-verdigris">
-              Training complete. Checkpoints saved to {job.result.checkpoint_path}.
+              Training complete. {job.result.arch} checkpoints saved to {job.result.checkpoint_dir}.
             </p>
           )}
           {job.state === "error" && <p className="text-sm text-destructive">{job.error}</p>}

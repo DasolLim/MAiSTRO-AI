@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import jobs
-from .routers import audio, dataset, generate, train
+from .routers import arena, audio, dataset, external, generate, train
 
 app = FastAPI(title="MAiSTRO API")
 
@@ -20,6 +20,8 @@ app.include_router(dataset.router)
 app.include_router(train.router)
 app.include_router(generate.router)
 app.include_router(audio.router)
+app.include_router(arena.router)
+app.include_router(external.router)
 
 
 @app.get("/health")

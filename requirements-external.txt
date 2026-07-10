@@ -1,0 +1,15 @@
+# Optional: text-to-audio generation via Meta's MusicGen (the Studio page).
+#
+# This is a separate file because it pulls in torch and downloads several GB of
+# model weights on first run. Nothing in the core MAiSTRO pipeline needs it, and
+# the /external/musicgen endpoints degrade to a clear 503 when it is absent.
+#
+#   pip install -r requirements-external.txt
+#
+# Note: audiocraft targets a newer torch than the TensorFlow 2.10 pin used for
+# the LSTM. Installing it in a separate virtualenv from the training environment
+# is the safe choice; the API only needs it importable at request time.
+
+torch>=2.1.0
+torchaudio>=2.1.0
+audiocraft>=1.3.0

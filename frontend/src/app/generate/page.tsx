@@ -1,39 +1,55 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { getLibrary, pollJob, startGeneration, type JobStatus, type LibraryTrack } from "@/lib/api";
-import { StaffDivider } from "@/components/StaffDivider";
+import { useState } from "react";
 import { JobLog } from "@/components/JobLog";
-import { TrackRow } from "@/components/TrackRow";
+import { Button, Field, MetricGrid, Select, Slider } from "@/components/Controls";
+import { MidiPlayer } from "@/components/MidiPlayer";
+import { StaffDivider } from "@/components/StaffDivider";
+import { useGenerate, useGenerateOptions } from "@/lib/useJob";
 
-interface GenerateResult {
-  filename: string;
-}
+const NO_KEY = "__none__";
+const NO_MOOD = "__none__";
 
 export default function GeneratePage() {
-  const [job, setJob] = useState<JobStatus<GenerateResult> | null>(null);
-  const [recentTracks, setRecentTracks] = useState<LibraryTrack[]>([]);
-  const stopPolling = useRef<() => void>(() => {});
+  const { data: options, isLoading, error: optionsError } = useGenerateOptions();
+  const generation = useGenerate();
 
-  const isRunning = job?.state === "running" || job?.state === "pending";
+  const [arch, setArch] = useState<string | null>(null);
+  const [mood, setMood] = useState(NO_MOOD);
+  const [tonic, setTonic] = useState(NO_KEY);
+  const [scale, setScale] = useState("major");
+  const [tempo, setTempo] = useState(96);
+  const [notes, setNotes] = useState(300);
+  const [temperature, setTemperature] = useState<number | null>(null);
 
-  const refreshLibrary = () => {
-    getLibrary().then(({ tracks }) => setRecentTracks(tracks.slice(0, 3)));
-  };
+  if (isLoading) return <p className="text-sm text-muted-foreground">Loading the model registry…</p>;
+  if (optionsError || !options) {
+    return (
+      <p className="text-sm text-destructive">
+        Could not reach the API. Is the backend running on port 8000?
+      </p>
+    );
+  }
 
-  useEffect(() => {
-    refreshLibrary();
-    return () => stopPolling.current();
-  }, []);
+  const sampling = options.sampling;
+  const selectedArch = arch ?? options.default_architecture;
+  // A mood preset supplies its own temperature; the slider only overrides it once
+  // the user actually moves it.
+  const activeMood = options.moods.find((m) => m.key === mood);
+  const effectiveTemperature = temperature ?? activeMood?.temperature ?? sampling.temperature.default;
+  const isGreedy = effectiveTemperature < sampling.temperature.greedy_below;
+
+  const result = generation.job?.state === "done" ? generation.job.result : null;
 
   const handleGenerate = () => {
-    stopPolling.current();
-    startGeneration().then(({ job_id }) => {
-      stopPolling.current = pollJob<GenerateResult>(job_id, (update) => {
-        setJob(update);
-        if (update.state === "done") refreshLibrary();
-      });
+    generation.start({
+      arch: selectedArch,
+      n_notes: notes,
+      temperature: effectiveTemperature,
+      key: tonic === NO_KEY ? null : tonic,
+      scale: tonic === NO_KEY ? "chromatic" : scale,
+      mood: mood === NO_MOOD ? null : mood,
+      tempo_bpm: tempo,
     });
   };
 
@@ -44,50 +60,129 @@ export default function GeneratePage() {
       </p>
       <h1 className="mt-3 font-display text-4xl text-foreground">A new composition</h1>
       <p className="mt-4 max-w-[65ch] text-muted-foreground">
-        Sample a fresh sequence from the trained model, seeded from a random passage in the
-        dataset, and write it out as a MIDI file.
+        Sample a fresh sequence from a trained model. Temperature decides how far the decoder
+        strays from its favourite note; key and mood bias it without retraining.
       </p>
 
       <StaffDivider className="mt-10" />
 
-      <div className="mt-8">
-        <button
-          onClick={handleGenerate}
-          disabled={isRunning}
-          className="cursor-pointer border border-brass px-5 py-2.5 text-sm font-medium text-brass transition-colors hover:bg-brass hover:text-brass-foreground disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground disabled:hover:bg-transparent"
+      <div className="mt-8 grid gap-8 sm:grid-cols-2">
+        <Field
+          label="Model"
+          hint={options.architectures.find((a) => a.key === selectedArch)?.description}
         >
-          {isRunning ? "Composing…" : "Generate composition"}
-        </button>
+          <Select
+            value={selectedArch}
+            onChange={setArch}
+            options={options.architectures.map((a) => ({
+              value: a.key,
+              label: a.trained ? a.label : `${a.label} — not trained`,
+            }))}
+          />
+        </Field>
 
-        {job && (
-          <div className="mt-6">
-            {job.state === "done" && job.result && (
-              <p className="text-sm text-verdigris">
-                Saved <span className="font-display italic">{job.result.filename}</span>. Render
-                it to audio from the{" "}
-                <Link href="/library" className="text-brass underline underline-offset-2">
-                  listening room
-                </Link>
-                .
-              </p>
-            )}
-            {job.state === "error" && <p className="text-sm text-destructive">{job.error}</p>}
-            <JobLog lines={job.log} />
+        <Field
+          label="Creativity (temperature)"
+          hint={
+            isGreedy
+              ? "Below 1.30 this model is so confident that sampling collapses to greedy decoding — the same passage every time."
+              : `Sampling from the top ${sampling.top_k} notes, nucleus ${sampling.top_p}.`
+          }
+        >
+          <Slider
+            value={effectiveTemperature}
+            onChange={setTemperature}
+            min={sampling.temperature.min}
+            max={sampling.temperature.max}
+            step={sampling.temperature.step}
+          />
+        </Field>
+
+        <Field label="Mood" hint={activeMood?.description ?? "No preset — the dials below are yours."}>
+          <Select
+            value={mood}
+            onChange={(next) => {
+              setMood(next);
+              setTemperature(null); // let the new preset's temperature take effect
+              const preset = options.moods.find((m) => m.key === next);
+              if (preset) setScale(preset.scale);
+            }}
+            options={[
+              { value: NO_MOOD, label: "None" },
+              ...options.moods.map((m) => ({ value: m.key, label: m.label })),
+            ]}
+          />
+        </Field>
+
+        <Field label="Tempo" hint="Written into the MIDI file as a metronome mark.">
+          <Slider
+            value={tempo}
+            onChange={setTempo}
+            min={40}
+            max={180}
+            step={1}
+            format={(v) => `${v}`}
+          />
+        </Field>
+
+        <Field label="Key" hint="Biases the decoder toward notes in this scale.">
+          <div className="flex gap-3">
+            <Select
+              value={tonic}
+              onChange={setTonic}
+              options={[
+                { value: NO_KEY, label: "Any" },
+                ...options.keys.map((k) => ({ value: k, label: k })),
+              ]}
+            />
+            <Select
+              value={scale}
+              onChange={setScale}
+              disabled={tonic === NO_KEY}
+              options={options.scales
+                .filter((s) => s !== "chromatic")
+                .map((s) => ({ value: s, label: s.replace(/_/g, " ") }))}
+            />
           </div>
-        )}
+        </Field>
+
+        <Field label="Length" hint="Notes, chords and rests to sample.">
+          <Slider value={notes} onChange={setNotes} min={32} max={600} step={4} format={(v) => `${v}`} />
+        </Field>
       </div>
 
-      {recentTracks.length > 0 && (
-        <div className="mt-16">
-          <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
-            Recent
-          </p>
-          <StaffDivider className="mt-4" />
-          <ul className="divide-y divide-border">
-            {recentTracks.map((track) => (
-              <TrackRow key={track.midi_filename} track={track} />
-            ))}
-          </ul>
+      <div className="mt-10">
+        <Button onClick={handleGenerate} disabled={generation.isRunning}>
+          {generation.isRunning ? "Composing…" : "Generate composition"}
+        </Button>
+      </div>
+
+      {generation.error && (
+        <p className="mt-6 text-sm text-destructive">{generation.error.message}</p>
+      )}
+
+      {generation.job && (
+        <div className="mt-8">
+          {result && (
+            <>
+              <MidiPlayer filename={result.filename} label={result.filename} />
+              <MetricGrid
+                metrics={{
+                  "Repetition": result.metrics.repetition_rate.toFixed(3),
+                  "Distinct pitches": result.metrics.distinct_pitch_classes,
+                  "Corpus KL": result.metrics.pitch_class_kl?.toFixed(3) ?? null,
+                  "Seed": result.config.seed ?? null,
+                }}
+              />
+              <p className="mt-4 max-w-[65ch] text-xs leading-relaxed text-muted-foreground">
+                Repetition is the share of 4-note windows the decoder has already played —
+                lower is more inventive. Corpus KL compares this piece&apos;s pitch-class
+                distribution against the training set; near zero means it sounds like the corpus.
+                The seed reproduces this exact take.
+              </p>
+            </>
+          )}
+          <JobLog lines={generation.job.log} />
         </div>
       )}
     </div>

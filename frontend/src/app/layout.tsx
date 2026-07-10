@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import { ProgramNav } from "@/components/ProgramNav";
+import { QueryProvider } from "@/lib/QueryProvider";
 import "./globals.css";
 
 const playfair = Playfair_Display({
@@ -27,8 +28,10 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${playfair.variable} ${inter.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
-        <ProgramNav />
-        <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-12">{children}</main>
+        <QueryProvider>
+          <ProgramNav />
+          <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-12">{children}</main>
+        </QueryProvider>
       </body>
     </html>
   );
