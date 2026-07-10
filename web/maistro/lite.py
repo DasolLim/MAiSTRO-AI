@@ -56,7 +56,10 @@ class LiteConfig:
     def resolved(self) -> "LiteConfig":
         mood = MOODS.get(self.mood or "")
         return LiteConfig(
-            n_notes=max(16, min(self.n_notes, MAX_NOTES)),
+            # Only the upper bound is enforced here, to protect the function's wall
+            # clock. A lower floor would silently hand back more notes than asked for;
+            # the HTTP layer already rejects anything under 16 with a 422.
+            n_notes=max(1, min(self.n_notes, MAX_NOTES)),
             temperature=self.temperature
             if self.temperature is not None
             else (mood.temperature if mood else DEFAULT_TEMPERATURE),
