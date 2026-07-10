@@ -1,12 +1,26 @@
 "use client";
 
+import { LocalOnly } from "@/components/LocalOnly";
 import { StaffDivider } from "@/components/StaffDivider";
 import { TrackRow } from "@/components/TrackRow";
-import { useLibrary } from "@/lib/useJob";
+import { useFeature, useLibrary } from "@/lib/useJob";
 
 export default function LibraryPage() {
+  const { available } = useFeature("library");
+  const gate = !available ? (
+    <LocalOnly
+      feature={"The listening room"}
+      what={"It lists every piece the model has composed and lets you play them back, tagged with the settings and seed that produced them."}
+      why={"It needs a filesystem that survives between requests. The deployed API runs as a stateless function, so a piece it generates exists only in the response that returns it."}
+    />
+  ) : null;
+
   const { data, isLoading, error } = useLibrary();
   const tracks = data?.tracks;
+
+  // Rendered after every hook above, so the hook order does not change when
+  // capabilities load and `gate` flips from null to a panel.
+  if (gate) return <div>{gate}</div>;
 
   return (
     <div>

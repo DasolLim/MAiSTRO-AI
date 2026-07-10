@@ -26,7 +26,30 @@ app.include_router(external.router)
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok"}
+    return {"status": "ok", "mode": "local"}
+
+
+@app.get("/capabilities")
+def capabilities() -> dict:
+    """What this backend can do. The deployed serverless API answers the same shape.
+
+    The frontend reads this once and hides or explains whatever is missing, so a
+    visitor to the free-tier deployment never clicks into a feature that cannot work
+    there. Running locally, everything is available.
+    """
+    return {
+        "mode": "local",
+        "model_loaded": True,
+        "features": {
+            "generate": True,
+            "library": True,
+            "arena": True,
+            "train": True,
+            "dataset": True,
+            "musicgen": True,
+        },
+        "reason": None,
+    }
 
 
 @app.get("/jobs/{job_id}")

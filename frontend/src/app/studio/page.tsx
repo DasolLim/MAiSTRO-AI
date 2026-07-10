@@ -6,10 +6,13 @@ import { JobLog } from "@/components/JobLog";
 import { MagentaContinuation } from "@/components/MagentaContinuation";
 import { StaffDivider } from "@/components/StaffDivider";
 import { audioFileUrl } from "@/lib/api";
-import { useMusicGen, useMusicGenStatus } from "@/lib/useJob";
+import { useFeature, useMusicGen, useMusicGenStatus } from "@/lib/useJob";
 
 export default function StudioPage() {
-  const { data: status, isLoading } = useMusicGenStatus();
+  // Magenta runs in the browser and is always available. MusicGen needs torch —
+  // 511MB — so the free-tier deployment does not carry it.
+  const musicgenAvailable = useFeature("musicgen").available;
+  const { data: status, isLoading } = useMusicGenStatus(musicgenAvailable);
   const musicgen = useMusicGen();
 
   const [prompt, setPrompt] = useState("");
@@ -42,9 +45,22 @@ export default function StudioPage() {
           at the cost of never producing a score you can edit. Runs on the Python backend.
         </p>
 
-        {isLoading && <p className="mt-6 text-sm text-muted-foreground">Checking the audio stack…</p>}
+        {!musicgenAvailable && (
+          <div className="mt-6 border border-border bg-surface p-6">
+            <p className="text-sm text-foreground">MusicGen is not part of this deployment.</p>
+            <p className="mt-2 max-w-[60ch] text-sm text-muted-foreground">
+              It needs torch, which is 511MB — the whole serverless function is capped at 500MB,
+              and the model weights are another 2GB on top. Run the backend locally and MusicGen
+              works. Magenta, below, runs in your browser and needs nothing.
+            </p>
+          </div>
+        )}
 
-        {status && !status.available && (
+        {musicgenAvailable && isLoading && (
+          <p className="mt-6 text-sm text-muted-foreground">Checking the audio stack…</p>
+        )}
+
+        {musicgenAvailable && status && !status.available && (
           <div className="mt-6 border border-border bg-surface p-6">
             <p className="text-sm text-foreground">MusicGen is not installed.</p>
             <p className="mt-2 max-w-[60ch] text-sm text-muted-foreground">{status.reason}</p>
@@ -54,7 +70,7 @@ export default function StudioPage() {
           </div>
         )}
 
-        {status?.available && (
+        {musicgenAvailable && status?.available && (
           <>
             <div className="mt-8 grid gap-8 sm:grid-cols-2">
               <Field label="Prompt" hint="Describe instruments, texture and feel — not notes.">

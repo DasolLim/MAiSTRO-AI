@@ -3,6 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  generateSync,
+  getCapabilities,
   getDatasetStats,
   getGenerateOptions,
   getJob,
@@ -17,9 +19,12 @@ import {
   startTraining,
   waitForJob,
   type ArenaPair,
+  type Capabilities,
   type GenerateParams,
   type GenerateResult,
+  type GenerationMetrics,
   type JobStatus,
+  type SyncGenerateResult,
 } from "./api";
 
 const POLL_INTERVAL_MS = 1200;
@@ -85,6 +90,37 @@ function useJobAction<TResult, TVariables>(
 
 /* --------------------------------------------------------------- queries */
 
+/**
+ * Which backend are we talking to? Answered once and cached for the session.
+ *
+ * A backend that predates this endpoint, or one that is simply down, is treated as
+ * "local with everything on" — the individual pages already handle their own
+ * failures, and guessing "serverless" would wrongly hide features.
+ */
+export function useCapabilities() {
+  return useQuery({
+    queryKey: ["capabilities"],
+    queryFn: getCapabilities,
+    staleTime: Infinity,
+    retry: false,
+  });
+}
+
+/** True only when we know the backend is the stateless deployment. */
+export function useFeature(name: keyof Capabilities["features"]): {
+  available: boolean;
+  serverless: boolean;
+  reason: string | null;
+} {
+  const { data } = useCapabilities();
+  if (!data) return { available: true, serverless: false, reason: null };
+  return {
+    available: data.features[name],
+    serverless: data.mode === "serverless",
+    reason: data.reason,
+  };
+}
+
 export function useDatasetStats() {
   return useQuery({ queryKey: ["dataset", "stats"], queryFn: getDatasetStats, staleTime: 0 });
 }
@@ -105,21 +141,64 @@ export function useLeaderboard() {
   return useQuery({ queryKey: ["arena", "leaderboard"], queryFn: getLeaderboard });
 }
 
-export function useMusicGenStatus() {
+export function useMusicGenStatus(enabled = true) {
   return useQuery({
     queryKey: ["external", "musicgen", "status"],
     queryFn: getMusicGenStatus,
     staleTime: 60_000,
+    // The serverless deployment has no /external routes at all; asking would 404.
+    enabled,
   });
 }
 
 /* ------------------------------------------------------------- mutations */
 
+/** One composition, however the backend chose to hand it over. */
+export interface GeneratedPiece {
+  /** Local backend: the piece was written to disk and is served by filename. */
+  filename?: string;
+  /** Serverless: no disk, so the MIDI comes back inline. */
+  midiBase64?: string;
+  metrics: GenerationMetrics;
+  config: Required<GenerateParams>;
+}
+
+/**
+ * Generate a piece, hiding which transport the backend offers.
+ *
+ * The local backend runs generation as a background job and streams a log. The
+ * serverless function has nowhere to keep a job between the POST that starts it and
+ * the GET that polls it, so it answers in one request. Both hooks are always called
+ * — only one of them is ever started.
+ */
 export function useGenerate() {
+  const { data: capabilities } = useCapabilities();
+  const serverless = capabilities?.mode === "serverless";
+
   const invalidateLibrary = useInvalidateLibrary();
   // Refresh the library the moment a composition lands, so the recent-tracks
   // list under the button is never one generation behind.
-  return useJobAction<GenerateResult, GenerateParams>(startGeneration, invalidateLibrary);
+  const job = useJobAction<GenerateResult, GenerateParams>(startGeneration, invalidateLibrary);
+  const sync = useMutation<SyncGenerateResult, Error, GenerateParams>({ mutationFn: generateSync });
+
+  const jobResult = job.job?.state === "done" ? job.job.result : null;
+  const piece: GeneratedPiece | null = serverless
+    ? sync.data
+      ? { midiBase64: sync.data.midi_base64, metrics: sync.data.metrics, config: sync.data.config }
+      : null
+    : jobResult
+      ? { filename: jobResult.filename, metrics: jobResult.metrics, config: jobResult.config }
+      : null;
+
+  return {
+    start: (params: GenerateParams) => (serverless ? sync.mutate(params) : job.start(params)),
+    isRunning: serverless ? sync.isPending : job.isRunning,
+    error: serverless ? sync.error : job.error,
+    // The serverless call is a single request, so there is no progress to stream.
+    log: serverless ? [] : (job.job?.log ?? []),
+    started: serverless ? sync.isPending || sync.isSuccess || sync.isError : job.job !== undefined,
+    piece,
+  };
 }
 
 export interface PrepareResult {

@@ -3,12 +3,22 @@
 import { useMutation } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { uploadMidiFiles } from "@/lib/api";
-import { useDatasetStats, usePrepareDataset } from "@/lib/useJob";
+import { useDatasetStats, useFeature, usePrepareDataset } from "@/lib/useJob";
+import { LocalOnly } from "@/components/LocalOnly";
 import { StaffDivider } from "@/components/StaffDivider";
 import { JobLog } from "@/components/JobLog";
 import { ProgressBar } from "@/components/ProgressBar";
 
 export default function DatasetPage() {
+  const { available } = useFeature("dataset");
+  const gate = !available ? (
+    <LocalOnly
+      feature={"Dataset preparation"}
+      what={"Upload MIDI files and parse them into the note vocabulary the model trains on."}
+      why={"It writes the parsed corpus to disk, and it needs music21 (111MB) to read MIDI. The deployed function has neither."}
+    />
+  ) : null;
+
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -29,6 +39,10 @@ export default function DatasetPage() {
   const job = prepare.job;
   const isRunning = prepare.isRunning;
   const uploading = upload.isPending;
+
+  // Rendered after every hook above, so the hook order does not change when
+  // capabilities load and `gate` flips from null to a panel.
+  if (gate) return <div>{gate}</div>;
 
   return (
     <div>

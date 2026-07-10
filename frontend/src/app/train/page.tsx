@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Field, Select } from "@/components/Controls";
-import { useGenerateOptions, useTrain } from "@/lib/useJob";
+import { useFeature, useGenerateOptions, useTrain } from "@/lib/useJob";
+import { LocalOnly } from "@/components/LocalOnly";
 import { StaffDivider } from "@/components/StaffDivider";
 import { JobLog } from "@/components/JobLog";
 import { ProgressBar } from "@/components/ProgressBar";
@@ -66,6 +67,15 @@ const READING_STAGES = [
 ] as const;
 
 export default function TrainPage() {
+  const { available } = useFeature("train");
+  const gate = !available ? (
+    <LocalOnly
+      feature={"Training"}
+      what={"Fit an LSTM or a transformer on the note corpus, watching loss and validation loss per epoch."}
+      why={"Training takes hours and needs TensorFlow, which is 877MB unpacked and requires Python 3.10. A serverless function is capped at minutes and 500MB."}
+    />
+  ) : null;
+
   const [arch, setArch] = useState<string | null>(null);
   const [epochs, setEpochs] = useState(5);
   const [batchSize, setBatchSize] = useState(64);
@@ -85,6 +95,10 @@ export default function TrainPage() {
   // Validation loss is the honest signal: training loss keeps falling long after
   // the model has started memorising 200 MIDI files.
   const judgedLoss = progress?.val_loss ?? progress?.loss;
+
+  // Rendered after every hook above, so the hook order does not change when
+  // capabilities load and `gate` flips from null to a panel.
+  if (gate) return <div>{gate}</div>;
 
   return (
     <div>
