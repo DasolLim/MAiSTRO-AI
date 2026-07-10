@@ -10,11 +10,21 @@ This project is a deep learning-based music composition system using Long Short-
 - Raymond Li
 - Leo Karras
 
+## What's new
+
+The decoder now samples instead of taking `argmax` (with a calibrated creativity slider), generation can be steered toward a key, tempo and mood, two more architectures joined the model zoo, and trained models can be compared head-to-head in a blind listening arena. Generated MIDI plays in the browser via Tone.js — no Fluidsynth needed. See **[FEATURES.md](FEATURES.md)** for the details and the measurements behind them.
+
 ## Prerequisites
 Ensure you have the necessary dependencies installed before running the project. You can install them using:
 
 ```bash
 pip install -r requirements.txt
+```
+
+Optionally, for text-to-audio generation with Meta's MusicGen (the Studio page):
+
+```bash
+pip install -r requirements-external.txt
 ```
 
 ## Getting Started: Training the Model
