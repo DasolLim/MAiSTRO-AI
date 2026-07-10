@@ -56,7 +56,7 @@ export default function GeneratePage() {
   return (
     <div>
       <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
-        III. Generate
+        Compose
       </p>
       <h1 className="mt-3 font-display text-4xl text-foreground">A new composition</h1>
       <p className="mt-4 max-w-[65ch] text-muted-foreground">
@@ -85,7 +85,7 @@ export default function GeneratePage() {
           label="Creativity (temperature)"
           hint={
             isGreedy
-              ? "Below 1.30 this model is so confident that sampling collapses to greedy decoding — the same passage every time."
+              ? "Below 1.30 this model is confident enough that sampling collapses to greedy decoding — the same continuation out of any given passage."
               : `Sampling from the top ${sampling.top_k} notes, nucleus ${sampling.top_p}.`
           }
         >

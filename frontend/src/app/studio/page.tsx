@@ -20,7 +20,7 @@ export default function StudioPage() {
   return (
     <div>
       <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
-        VI. Studio
+        Compose
       </p>
       <h1 className="mt-3 font-display text-4xl text-foreground">Beyond the piano</h1>
       <p className="mt-4 max-w-[68ch] text-muted-foreground">
