@@ -1,41 +1,25 @@
-"""Shared LSTM + self-attention architecture used for both training and inference.
+"""Back-compat shim for the single-architecture API this module used to expose.
 
-Previously this network definition was copy-pasted across generate.py, collaborate.py
-and collaborateTTE.py. Centralizing it here also fixes a bug where weight loading only
-looked for legacy `.h5` files while training actually saves `.keras` checkpoints.
+The network definitions moved to architectures.py when the transformer and the
+plain-LSTM baseline were added. `backend/legacy_gui/collaborate.py` and any
+notebook that imported `build_network`/`load_trained_network` still work, and
+still get the bidirectional LSTM + attention model they were written against.
 """
 
 from pathlib import Path
 
-from keras.models import Sequential
-from keras.layers import Dense, Dropout, LSTM, Activation, Bidirectional, Flatten
-from keras_self_attention import SeqSelfAttention
+from keras.models import Model
 
-from . import config
+from . import architectures, config
 
-
-def build_network(input_shape: tuple[int, int], n_vocab: int) -> Sequential:
-    """Build the (uncompiled-weights) LSTM + attention architecture.
-
-    input_shape: (sequence_length, features)
-    """
-    model = Sequential()
-    model.add(Bidirectional(LSTM(512, return_sequences=True), input_shape=input_shape))
-    model.add(SeqSelfAttention(attention_activation="sigmoid"))
-    model.add(Dropout(0.3))
-    model.add(LSTM(512, return_sequences=True))
-    model.add(Dropout(0.3))
-    model.add(Flatten())
-    model.add(Dense(n_vocab))
-    model.add(Activation("softmax"))
-    model.compile(loss="categorical_crossentropy", optimizer="rmsprop")
-    return model
+DEFAULT_ARCH = config.LEGACY_WEIGHTS_ARCH
 
 
-def load_trained_network(n_vocab: int, weights_path: Path | None = None) -> Sequential:
-    """Build the network and load the most recently trained weights."""
-    weights_path = weights_path or config.latest_weights_file()
-    model = build_network((config.SEQUENCE_LENGTH, 1), n_vocab)
-    print(f"Loading weights from: {weights_path}")
-    model.load_weights(str(weights_path))
-    return model
+def build_network(input_shape: tuple[int, int], n_vocab: int) -> Model:
+    """Build the LSTM + attention architecture. input_shape: (sequence_length, features)."""
+    return architectures.build_network(DEFAULT_ARCH, input_shape[0], n_vocab)
+
+
+def load_trained_network(n_vocab: int, weights_path: Path | None = None) -> Model:
+    """Build the LSTM + attention network and load its most recent weights."""
+    return architectures.load_trained_network(DEFAULT_ARCH, n_vocab, weights_path)
