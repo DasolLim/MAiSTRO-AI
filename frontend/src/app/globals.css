@@ -57,3 +57,28 @@ body {
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
+
+/*
+  Hero piano rolls: notes arrive left to right, the way the passage would be
+  played. `backwards` holds them invisible through their stagger delay, and the
+  keyframes settle on each roll's own --note-opacity.
+*/
+@keyframes hero-note-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: var(--note-opacity, 1);
+  }
+}
+
+.hero-note {
+  animation: hero-note-in 0.45s ease-out backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-note {
+    animation: none;
+    opacity: var(--note-opacity, 1);
+  }
+}
