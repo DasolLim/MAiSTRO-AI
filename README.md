@@ -239,7 +239,7 @@ The frontend job is not decoration: `frontend/src/lib/` was once matched by a st
 
 ### Secrets to set
 
-`Settings → Secrets and variables → Actions`:
+Four secrets, in `Settings → Secrets and variables → Actions`, scoped to an **Environment named `Production`**:
 
 | Secret | Value |
 |---|---|
@@ -248,7 +248,9 @@ The frontend job is not decoration: `frontend/src/lib/` was once matched by a st
 | `VERCEL_PROJECT_ID_API` | `prj_AmwFNLV2ualt6yIs5qmAire4eh9S` |
 | `VERCEL_PROJECT_ID_FRONTEND` | `prj_XcqxD0FTtnJr2tlB4JzfRI1cHU69` |
 
-Only the token is sensitive. Disable Vercel's own Git integration if you enable this, or every push deploys twice.
+Only the token is sensitive. The scoping matters: an *Environment* secret is invisible to any job that does not declare `environment: Production`, and `${{ secrets.X }}` then expands to an empty string rather than erroring. Both deploy jobs declare it, and each opens with a step that fails loudly if a credential arrived empty — otherwise the symptom is a Vercel auth error that says nothing about the cause. Repository-level secrets would work too, without the `environment:` lines.
+
+Vercel's own Git integration must stay disconnected, or every push to `main` deploys twice — once from Vercel, once from Actions.
 
 ## Deployment
 

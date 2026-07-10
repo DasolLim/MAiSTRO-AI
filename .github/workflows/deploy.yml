@@ -33,6 +33,11 @@ jobs:
     name: Deploy maistro-api
     needs: checks
     runs-on: ubuntu-latest
+    # The Vercel credentials are Environment secrets scoped to "Production". A job
+    # that does not declare the environment cannot read them, and ${{ secrets.* }}
+    # would silently expand to an empty string -- `vercel deploy` then fails with an
+    # auth error that says nothing about the real cause.
+    environment: Production
     defaults:
       run:
         working-directory: web
@@ -43,6 +48,16 @@ jobs:
       url: ${{ steps.deploy.outputs.url }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify the Vercel credentials reached this job
+        env:
+          TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          fail() { echo "::error::$1 is empty. These are Environment secrets in 'Production'; the job must declare environment: Production."; exit 1; }
+          [ -n "$TOKEN" ] || fail VERCEL_TOKEN
+          [ -n "$VERCEL_ORG_ID" ] || fail VERCEL_ORG_ID
+          [ -n "$VERCEL_PROJECT_ID" ] || fail VERCEL_PROJECT_ID_API
+          echo "credentials present"
 
       - name: Warn when no trained model is committed
         run: |
@@ -80,6 +95,7 @@ jobs:
     # should already be live when this runs.
     needs: [checks, api]
     runs-on: ubuntu-latest
+    environment: Production # same reason as the api job above
     defaults:
       run:
         working-directory: frontend
@@ -88,6 +104,16 @@ jobs:
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_FRONTEND }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify the Vercel credentials reached this job
+        env:
+          TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          fail() { echo "::error::$1 is empty. These are Environment secrets in 'Production'; the job must declare environment: Production."; exit 1; }
+          [ -n "$TOKEN" ] || fail VERCEL_TOKEN
+          [ -n "$VERCEL_ORG_ID" ] || fail VERCEL_ORG_ID
+          [ -n "$VERCEL_PROJECT_ID" ] || fail VERCEL_PROJECT_ID_FRONTEND
+          echo "credentials present"
 
       - run: npm install --global vercel@latest
 
