@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+  # Called by deploy.yml on pushes to main, so a deploy never runs ahead of its
+  # checks and main does not trigger two overlapping workflow runs.
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend — lint, types, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # matches the Node version the Vercel project runs
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci` installs from the lockfile only. It fails if package.json and
+      # package-lock.json disagree, which is the check we want on every PR.
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      # This is the job that would have caught `frontend/src/lib/` being gitignored:
+      # a clean checkout that cannot resolve `@/lib/api` fails here, not in production.
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://maistro-api.vercel.app
+
+  serving:
+    name: Serving — tests on the deployed dependency set
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # the version Vercel's Python runtime uses
+          cache: pip
+
+      # Deliberately installs web/requirements.txt and nothing else. If a serving
+      # module ever reaches for TensorFlow, music21 or torch, these tests fail on
+      # the import rather than at deploy time when the bundle blows its 500MB limit.
+      - name: Install the deployed dependencies only
+        run: |
+          pip install -r web/requirements.txt
+          pip install pytest
+
+      - name: Test the pure core and the serving path
+        run: pytest tests/test_music_core.py tests/test_serving.py -q
+
+      - name: Verify web/maistro is in sync with backend/maistro
+        run: python scripts/sync_web_bundle.py --check
+
+      - name: Import the serverless app the way Vercel does
+        working-directory: web
+        run: python -c "from api.index import app; print(f'{len(app.routes)} routes')"
+
+  model:
+    name: Model — NumPy matches Keras
+    runs-on: ubuntu-latest
+    # TensorFlow 2.10 is a ~578MB wheel and needs Python 3.10, so this job is the
+    # slow one. It guards the claim the whole deployment rests on: that the NumPy
+    # forward pass reproduces the trained network.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install TensorFlow and the training stack
+        run: |
+          pip install "tensorflow~=2.10.0" "keras~=2.10.0" keras-self-attention
+          pip install numpy mido pytest
+
+      - name: NumPy inference must reproduce Keras
+        run: pytest tests/test_keras_parity.py -q

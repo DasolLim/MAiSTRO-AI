@@ -1,0 +1,104 @@
+name: Deploy
+
+# Deploys both Vercel projects on every push to main, but only after CI passes.
+# ci.yml is invoked as a reusable workflow rather than duplicated here, so there is
+# exactly one definition of "green" and a deploy can never outrun it.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#
+#   VERCEL_TOKEN               a personal token from vercel.com/account/tokens
+#   VERCEL_ORG_ID              team_Bh138wpVx0LQWnonypB5MrGp
+#   VERCEL_PROJECT_ID_API      prj_AmwFNLV2ualt6yIs5qmAire4eh9S   (maistro-api)
+#   VERCEL_PROJECT_ID_FRONTEND prj_XcqxD0FTtnJr2tlB4JzfRI1cHU69   (maistro)
+#
+# The org and project ids are not sensitive, but the CLI reads them from the
+# environment, so keeping all four together is simpler than splitting them.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Never let two deploys of main race each other. Queue rather than cancel: a
+  # half-finished deploy is worse than a slightly stale one.
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  api:
+    name: Deploy maistro-api
+    needs: checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API }}
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Warn when no trained model is committed
+        run: |
+          if [ ! -f model/transformer.npz ]; then
+            echo "::warning::web/model/transformer.npz is missing — the API will deploy but POST /generate/sync returns 503 until the transformer is trained (jupyter_notebooks/train_transformer_colab.ipynb)."
+          fi
+
+      - run: npm install --global vercel@latest
+
+      # Vercel builds this remotely. The bundle is fastapi + numpy + mido plus a 7MB
+      # model — about 40MB against the runtime's 500MB ceiling.
+      - name: Deploy to production
+        id: deploy
+        run: |
+          url=$(vercel deploy --prod --yes --token="${{ secrets.VERCEL_TOKEN }}")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed $url"
+
+      - name: Smoke test the public alias
+        run: |
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://maistro-api.vercel.app/health)
+            [ "$code" = "200" ] && { echo "health OK"; exit 0; }
+            echo "attempt $i: HTTP $code"; sleep 6
+          done
+          echo "::error::maistro-api did not become healthy"; exit 1
+
+      - name: Check the API still reports its capabilities
+        run: |
+          curl -sf https://maistro-api.vercel.app/capabilities | tee /dev/stderr | grep -q '"mode":"serverless"'
+
+  frontend:
+    name: Deploy maistro
+    # The frontend's API base URL is baked in at build time, so the API it points at
+    # should already be live when this runs.
+    needs: [checks, api]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_FRONTEND }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: npm install --global vercel@latest
+
+      - name: Deploy to production
+        run: vercel deploy --prod --yes --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Smoke test the live site
+        run: |
+          url=https://maistro-davidlim5774-2261s-projects.vercel.app
+          for path in / /how-it-works /generate; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$url$path")
+            echo "$path -> $code"
+            [ "$code" = "200" ] || { echo "::error::$path returned $code"; exit 1; }
+          done

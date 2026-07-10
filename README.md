@@ -2,6 +2,9 @@
 
 **A neural network that composes classical piano — and the tooling to steer it, hear it, and prove it improved.**
 
+[![Deploy](https://github.com/DasolLim/MAiSTRO-AI/actions/workflows/deploy.yml/badge.svg)](https://github.com/DasolLim/MAiSTRO-AI/actions/workflows/deploy.yml)
+[![CI](https://github.com/DasolLim/MAiSTRO-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/DasolLim/MAiSTRO-AI/actions/workflows/ci.yml)
+
 MAiSTRO trains sequence models on MIDI transcriptions of Mozart, Beethoven and Chopin, then generates new piano music one note at a time. It ships as a full-stack application: a Python inference and training service, a browser client that synthesises the results without any audio plugins, and a blind listening test for deciding which model actually sounds better.
 
 <p align="center">
@@ -26,6 +29,7 @@ TypeScript · Next.js 16 · React 19 · TanStack Query · Tone.js · Tailwind 4
 - [External AI models](#external-ai-models)
 - [Tech stack, and why](#tech-stack-and-why)
 - [Quick start](#quick-start)
+- [Testing and CI/CD](#testing-and-cicd)
 - [Deployment](#deployment)
 - [Walkthrough](#walkthrough)
 - [API reference](#api-reference)
@@ -204,6 +208,47 @@ pip install -r requirements-external.txt         # MusicGen: torch + transformer
 **On checkpoints and data.** The parsed note vocabulary (`data/notes`, 194k tokens) *is* committed, so you can train a model immediately without sourcing any MIDI files. Trained weights are **not** in version control — the `lstm_attention` checkpoint is 1.4GB — so `/generate` will report that no weights were found until you either train one (`/train`, or `train_model()`) or drop a `.keras` file into `checkpoints/<arch>/`. The transformer trains fastest by a wide margin.
 
 Full setup notes and troubleshooting live in [RUNNING.txt](RUNNING.txt).
+
+## Testing and CI/CD
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/test_music_core.py tests/test_serving.py   # fast, no TensorFlow
+pytest tests                                            # adds the Keras parity check
+```
+
+**45 tests**, split by what they need. The fast suite runs on the *deployed* dependency set — `fastapi + numpy + mido` and nothing else — which is the point of it.
+
+The load-bearing test is `test_generation_imports_nothing_heavy`. It blocks `tensorflow`, `keras`, `music21`, `torch`, `scipy` and `transformers` from importing, then generates a piece. The entire free-tier deployment rests on the serving path never reaching for any of them; a stray import would pass every other test and fail only at deploy time, when the bundle blows its 500 MB ceiling.
+
+`tests/test_keras_parity.py` guards the other central claim: that the NumPy forward pass reproduces the trained Keras model. It needs TensorFlow, so it skips itself when TF is absent and runs in its own CI job.
+
+### The pipeline
+
+Two GitHub Actions workflows. [`ci.yml`](.github/workflows/ci.yml) runs on every pull request:
+
+| Job | Runtime | What it proves |
+|---|---|---|
+| **frontend** | Node 24 | `npm ci`, lint, `tsc --noEmit`, `next build` — a clean checkout builds |
+| **serving** | Python 3.12 | Fast tests pass with only `web/requirements.txt` installed; `web/maistro/` is in sync; the serverless app imports |
+| **model** | Python 3.10 | NumPy inference still matches Keras, on a real TensorFlow install |
+
+[`deploy.yml`](.github/workflows/deploy.yml) runs on pushes to `main`. It *calls* `ci.yml` as a reusable workflow rather than duplicating it, so there is exactly one definition of "green" and a deploy can never outrun its checks. Then it deploys `maistro-api` (and smoke-tests `/health` and `/capabilities`), and only once that is live deploys the frontend — whose API URL is baked in at build time — and smoke-tests three pages.
+
+The frontend job is not decoration: `frontend/src/lib/` was once matched by a stray `lib/` rule in `.gitignore`, so `main` could not build from a clean clone while it built fine on a laptop. A CI build would have caught it on the first push.
+
+### Secrets to set
+
+`Settings → Secrets and variables → Actions`:
+
+| Secret | Value |
+|---|---|
+| `VERCEL_TOKEN` | A token from [vercel.com/account/tokens](https://vercel.com/account/tokens) |
+| `VERCEL_ORG_ID` | `team_Bh138wpVx0LQWnonypB5MrGp` |
+| `VERCEL_PROJECT_ID_API` | `prj_AmwFNLV2ualt6yIs5qmAire4eh9S` |
+| `VERCEL_PROJECT_ID_FRONTEND` | `prj_XcqxD0FTtnJr2tlB4JzfRI1cHU69` |
+
+Only the token is sensitive. Disable Vercel's own Git integration if you enable this, or every push deploys twice.
 
 ## Deployment
 
