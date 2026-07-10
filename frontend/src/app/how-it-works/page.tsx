@@ -107,6 +107,11 @@ const STACK = [
     role: "Melody continuation, in the browser via TensorFlow.js.",
     why: "The same task as MAiSTRO's LSTM with the opposite deployment model — no server, no cold start.",
   },
+  {
+    name: "NumPy + mido",
+    role: "The entire deployed inference stack.",
+    why: "Together with FastAPI they come to 31MB, against TensorFlow's 877MB. It is what makes a free-tier deployment possible at all.",
+  },
 ];
 
 export default function HowItWorksPage() {
@@ -308,6 +313,64 @@ export default function HowItWorksPage() {
           MAiSTRO&apos;s LSTM, continuing a melody one note at a time, but downloads to your browser
           and runs on your own GPU. Together they bracket the question of where a model should
           live.
+        </p>
+      </Section>
+
+      <StaffDivider className="mt-16" />
+
+      <Section eyebrow="Deployment" title="Fitting a neural network into 40 megabytes">
+        <p>
+          This site runs on a free tier. Vercel&apos;s Python runtime is 3.12 with a 500MB ceiling
+          on a deployed function — and TensorFlow is 877MB unpacked, and needs Python 3.10 or
+          older. The training backend cannot go there at any size.
+        </p>
+        <p>
+          The way through is a distinction worth internalising:{" "}
+          <span className="text-foreground">TensorFlow is only needed to train</span>. Running a
+          trained model forward is a dozen matrix multiplications over a few million numbers.
+          Nothing about that requires a deep-learning framework.
+        </p>
+        <p>
+          So the deployed API reimplements the transformer&apos;s forward pass in plain NumPy and
+          reads its weights from a 7MB file. Writing MIDI moves from music21 (111MB) to mido
+          (under 1MB). What ships is fastapi, numpy and mido.
+        </p>
+
+        <Table
+          head={["Component", "Unpacked size"]}
+          rows={[
+            ["TensorFlow", "877 MB"],
+            ["music21", "111 MB"],
+            ["fastapi + numpy + mido", "31 MB"],
+            ["Transformer weights, float16", "7.0 MB"],
+            ["Vocabulary + seed corpus", "0.17 MB"],
+            ["Deployed total", "≈ 40 MB"],
+          ]}
+        />
+
+        <p className="mt-8">
+          A rewrite is only worth anything if it computes the same function. The NumPy path is
+          checked against Keras on identical weights: the largest disagreement anywhere in the
+          output distribution is{" "}
+          <span className="text-foreground tabular-nums">4.2 × 10⁻⁷</span>, the two always pick
+          the same next note, and a 300-note piece takes{" "}
+          <span className="text-foreground">9.9 seconds</span> against a 300-second limit. The
+          training notebook re-runs that comparison and refuses to export weights that fail it.
+        </p>
+        <p>
+          Which model gets deployed follows from the arithmetic. The original LSTM keeps 97% of
+          its 178.8M parameters in one output layer — 357MB even at half precision. The
+          transformer&apos;s 3.9M parameters (256 dimensions, 4 heads, 4 layers) fit in 7MB. It is
+          trained on a free Colab T4, where an epoch takes about two minutes instead of the
+          seventeen it takes on a laptop.
+        </p>
+        <p>
+          A serverless function is stateless with a read-only disk, so the deployment keeps what
+          fits and is honest about the rest. Generation answers in one request, returning the MIDI
+          inline rather than writing a file. Magenta was already running in your browser. The
+          library, the arena, training and MusicGen need a filesystem, two trained models, hours,
+          and 511MB of torch respectively — they stay local, and the interface says so rather than
+          failing at you.
         </p>
       </Section>
 

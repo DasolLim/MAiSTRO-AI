@@ -26,6 +26,7 @@ TypeScript · Next.js 16 · React 19 · TanStack Query · Tone.js · Tailwind 4
 - [External AI models](#external-ai-models)
 - [Tech stack, and why](#tech-stack-and-why)
 - [Quick start](#quick-start)
+- [Deployment](#deployment)
 - [Walkthrough](#walkthrough)
 - [API reference](#api-reference)
 - [Using it as a library](#using-it-as-a-library)
@@ -101,7 +102,7 @@ Three architectures share one dataset, one tokenizer and one decoder, so a diffe
 |---|---:|---|---|
 | `lstm` | 4.9M | scalar | Two stacked LSTMs. The textbook baseline. |
 | `lstm_attention` | 178.8M | scalar | Bidirectional LSTM + self-attention. The original MAiSTRO network, and the default. |
-| `transformer` | 3.9M | token embeddings | 4-layer causal decoder with learned token and position embeddings. |
+| `transformer` | 3.9M | token embeddings | 4-layer causal decoder, d_model 256, 4 heads. **The deployed model** — see [Deployment](#deployment). |
 
 The parameter counts tell a story. The original network ends in `Flatten() → Dense(3388)` over a 100×512 sequence — **175M parameters in the output layer alone**. The transformer reaches comparable capacity with 46× fewer by never materialising that matrix.
 
@@ -203,6 +204,112 @@ pip install -r requirements-external.txt         # MusicGen: torch + transformer
 **On checkpoints and data.** The parsed note vocabulary (`data/notes`, 194k tokens) *is* committed, so you can train a model immediately without sourcing any MIDI files. Trained weights are **not** in version control — the `lstm_attention` checkpoint is 1.4GB — so `/generate` will report that no weights were found until you either train one (`/train`, or `train_model()`) or drop a `.keras` file into `checkpoints/<arch>/`. The transformer trains fastest by a wide margin.
 
 Full setup notes and troubleshooting live in [RUNNING.txt](RUNNING.txt).
+
+## Deployment
+
+The site runs on Vercel's free tier. Getting a neural network in there took some doing.
+
+### The constraint
+
+Vercel's Python runtime is **3.12** with a **500 MB** bundle ceiling. TensorFlow 2.10 is 877 MB unpacked and requires Python ≤ 3.10, so the training backend cannot deploy there at *any* size. Nor can the original model: 97% of `lstm_attention`'s 178.8M parameters live in a single `Flatten(51200) → Dense(3388)` layer, which is 357 MB even in float16.
+
+### The answer: TensorFlow only trains
+
+Inference over 3.9M weights is a dozen matrix multiplications. So the deployed API runs the transformer's forward pass in **NumPy** ([`npmodel.py`](backend/maistro/npmodel.py)), reading weights from a float16 `.npz`, and writes MIDI with `mido` instead of music21.
+
+| | Unpacked |
+|---|---:|
+| TensorFlow | 877 MB |
+| music21 | 111 MB |
+| torch (MusicGen) | 511 MB |
+| **fastapi + numpy + mido** | **31 MB** |
+| Transformer weights, fp16 | 7.0 MB |
+| Vocabulary + seed corpus | 0.17 MB |
+| **Deployed total** | **≈ 40 MB** |
+
+The NumPy path is verified against Keras on identical weights: `max |keras − numpy| = 4.2e-07`, argmax always agrees, and a 300-note piece takes **9.9 s** against a 300 s function ceiling.
+
+### The deployed model
+
+**`transformer`, d_model 256 · 4 heads · 4 layers · ff_dim 512 — 3,872,572 parameters, trained on a free Colab T4 GPU.**
+
+It is the only architecture small enough to serve. On a T4 an epoch takes a couple of minutes; on a laptop CPU it takes ~17, which is why training happens in Colab and only the exported weights come home.
+
+Trained weights are not in version control until you produce them. Until `web/model/transformer.npz` exists, `POST /generate/sync` returns a `503` that says exactly this.
+
+### Train it (one-time, ~30 minutes)
+
+Everything is in [`jupyter_notebooks/train_transformer_colab.ipynb`](jupyter_notebooks/train_transformer_colab.ipynb).
+
+1. **Push your branch** — the notebook clones the repo.
+   ```bash
+   git push origin <your-branch>
+   ```
+2. **Open the notebook in Colab** and set `Runtime → Change runtime type → T4 GPU`.
+   ```
+   https://colab.research.google.com/github/<you>/MAiSTRO-AI/blob/<branch>/jupyter_notebooks/train_transformer_colab.ipynb
+   ```
+3. **Run all cells.** In order, they: confirm the GPU, clone and install (`music21`, `mido` — *not* TensorFlow, Colab has it), train ~20 epochs while printing `loss` and `val_loss`, plot the loss curves, generate a sample so you can sanity-check the model before shipping it, then export to NumPy.
+4. **The export self-checks.** It reloads the `.npz` through `npmodel.py`, compares against the live Keras model, and `assert`s the drift is under `1e-4`. An export that does not reproduce the model refuses to download.
+5. **Download** `transformer.npz` (~7 MB) and `vocabulary.npz` (~0.2 MB) from the last cell.
+
+You do not need any MIDI files: the parsed note vocabulary (`data/notes`) is committed, so training starts immediately.
+
+### Wire it up (the manual part)
+
+**1. Drop the weights in and commit them.** 7 MB is comfortable for git, and the deploy reads them from the Root Directory.
+
+```bash
+cp ~/Downloads/transformer.npz ~/Downloads/vocabulary.npz web/model/
+python scripts/sync_web_bundle.py --check   # asserts web/maistro/ matches backend/maistro/
+git add web/model && git commit -m "add trained transformer weights"
+```
+
+**2. Test the API locally, exactly as Vercel will run it.**
+
+```bash
+cd web
+MAISTRO_MODEL_DIR=$PWD/model uvicorn api.index:app --port 8200
+curl -s localhost:8200/capabilities
+curl -s -X POST localhost:8200/generate/sync \
+  -H 'Content-Type: application/json' \
+  -d '{"n_notes":60,"key":"A","scale":"minor","mood":"melancholic"}' | head -c 200
+```
+
+**3. Deploy the API as its own Vercel project.** `web/` is self-contained: one function, three dependencies, [`vercel.json`](web/vercel.json) sets 1024 MB memory and a 120 s timeout.
+
+```bash
+cd web
+vercel link          # create a NEW project, e.g. "maistro-api"
+vercel --prod        # note the URL it prints
+```
+
+**4. Point the frontend at it.** The CORS regex in the API already allows any `*.vercel.app` origin, so nothing else needs changing.
+
+```bash
+cd ../frontend
+vercel env rm NEXT_PUBLIC_API_BASE_URL production   # it may be set to an empty string
+vercel env add NEXT_PUBLIC_API_BASE_URL production  # paste https://maistro-api-....vercel.app
+vercel env add NEXT_PUBLIC_API_BASE_URL preview
+vercel --prod
+```
+
+> An **empty** `NEXT_PUBLIC_API_BASE_URL` is worse than an unset one: `"" ?? fallback` returns `""` in JavaScript, so every request resolves to a relative path and the frontend answers its own API calls with a 404. The client now treats blank as unset, but set it properly anyway.
+
+### What the deployed site can and cannot do
+
+A serverless function is stateless with a read-only filesystem, so the deployment exposes a deliberate subset. `GET /capabilities` reports exactly which, and the UI reads it rather than failing.
+
+| Feature | Deployed | Why |
+|---|:--:|---|
+| Generate | ✅ | ~10 s for 300 notes; returns MIDI inline as base64, no disk needed |
+| Magenta melody continuation | ✅ | Runs in the visitor's browser, never touches the backend |
+| Listening room | ❌ | Needs a writable filesystem to keep pieces between requests |
+| Arena | ❌ | Needs two trained models and somewhere to persist votes |
+| Train / Prepare dataset | ❌ | Read-only disk; an invocation lasts minutes, training lasts hours |
+| MusicGen | ❌ | torch alone is 511 MB |
+
+All of them work when the full backend runs locally.
 
 ## Walkthrough
 
