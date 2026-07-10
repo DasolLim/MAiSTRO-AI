@@ -1,0 +1,25 @@
+{
+  "config": {
+    "arch": "lstm_attention",
+    "n_notes": 60,
+    "temperature": 1.7,
+    "top_k": 40,
+    "top_p": 0.98,
+    "key": null,
+    "scale": "major",
+    "mood": "triumphant",
+    "tempo_bpm": 135,
+    "seed": 518277050
+  },
+  "metrics": {
+    "note_count": 60,
+    "unique_token_ratio": 0.7166666666666667,
+    "repetition_rate": 0.0,
+    "rest_fraction": 0.0,
+    "distinct_pitch_classes": 8,
+    "mean_pitch": 66.22727272727273,
+    "pitch_range": 21,
+    "notes_per_quarter": 0.593258426966292,
+    "pitch_class_kl": 0.6688090765210134
+  }
+}
