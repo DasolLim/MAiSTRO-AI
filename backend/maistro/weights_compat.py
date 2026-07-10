@@ -137,9 +137,21 @@ def _assign(model, handle, archive_path: Path) -> None:
 
 
 def load_weights(model, weights_path: Path) -> None:
-    """Load `weights_path` into `model`, transparently handling either Keras format."""
-    if is_keras3_archive(weights_path):
-        print(f"Reading Keras 3 archive {weights_path.name} into a Keras 2 model…")
-        load_keras3_weights(model, weights_path)
-    else:
+    """Load `weights_path` into `model`, transparently handling either Keras format.
+
+    Native loading is tried first. It is the only correct path when the *runtime* is
+    Keras 3 (Colab), where the manual mapper below would mis-order the weights of
+    nested layers -- Keras 3 groups a block's sublayers alphabetically, Keras 2 lists
+    them in creation order. The mapper exists only for the reverse case: a Keras 3
+    archive being read by the Keras 2 runtime this project pins, where `load_weights`
+    cannot open the zip at all.
+    """
+    try:
         model.load_weights(str(weights_path))
+        return
+    except Exception:
+        if not is_keras3_archive(weights_path):
+            raise
+
+    print(f"Reading Keras 3 archive {weights_path.name} into a Keras 2 model…")
+    load_keras3_weights(model, weights_path)

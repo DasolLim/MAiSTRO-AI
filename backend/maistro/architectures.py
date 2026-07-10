@@ -28,7 +28,6 @@ import tensorflow as tf
 from keras import layers
 from keras.models import Model, Sequential
 from keras.optimizers import Adam
-from keras_self_attention import SeqSelfAttention
 
 from . import config, weights_compat
 
@@ -44,12 +43,17 @@ def build_lstm(sequence_length: int, n_vocab: int) -> Model:
     model.add(layers.Dropout(0.3))
     model.add(layers.Dense(n_vocab))
     model.add(layers.Activation("softmax"))
-    model.compile(loss="categorical_crossentropy", optimizer="rmsprop")
+    model.compile(loss="sparse_categorical_crossentropy", optimizer="rmsprop")
     return model
 
 
 def build_lstm_attention(sequence_length: int, n_vocab: int) -> Model:
     """Bidirectional LSTM + self-attention. Matches the checkpoints already on disk."""
+    # Imported here, not at module scope: keras_self_attention has no Keras 3 build,
+    # so a top-level import would make this whole module unloadable on Colab (Keras 3)
+    # and anywhere the transformer is trained or exported without it.
+    from keras_self_attention import SeqSelfAttention
+
     model = Sequential(name="lstm_attention")
     model.add(
         layers.Bidirectional(
@@ -63,7 +67,7 @@ def build_lstm_attention(sequence_length: int, n_vocab: int) -> Model:
     model.add(layers.Flatten())
     model.add(layers.Dense(n_vocab))
     model.add(layers.Activation("softmax"))
-    model.compile(loss="categorical_crossentropy", optimizer="rmsprop")
+    model.compile(loss="sparse_categorical_crossentropy", optimizer="rmsprop")
     return model
 
 
@@ -91,6 +95,18 @@ class TokenAndPositionEmbedding(layers.Layer):
         }
 
 
+def gelu_tanh(x):
+    """GELU via its tanh approximation.
+
+    Keras's built-in "gelu" uses the exact erf form, which NumPy cannot evaluate
+    without pulling in SciPy (~90MB). The tanh approximation agrees to ~1e-3 and is
+    two lines of NumPy, so the serverless inference path (see npmodel.py) reproduces
+    this network exactly with nothing but NumPy. Chosen before training, so the
+    weights are fitted to this activation rather than converted to it afterwards.
+    """
+    return tf.nn.gelu(x, approximate=True)
+
+
 class TransformerBlock(layers.Layer):
     """Pre-norm decoder block: causal self-attention, then a position-wise FFN."""
 
@@ -104,9 +120,7 @@ class TransformerBlock(layers.Layer):
         self.attention = layers.MultiHeadAttention(
             num_heads=num_heads, key_dim=d_model // num_heads, dropout=dropout
         )
-        self.ffn = Sequential(
-            [layers.Dense(ff_dim, activation="gelu"), layers.Dense(d_model)]
-        )
+        self.ffn = Sequential([layers.Dense(ff_dim, activation=gelu_tanh), layers.Dense(d_model)])
         self.norm1 = layers.LayerNormalization(epsilon=1e-6)
         self.norm2 = layers.LayerNormalization(epsilon=1e-6)
         self.drop1 = layers.Dropout(dropout)
@@ -156,7 +170,7 @@ def build_transformer(
     outputs = layers.Dense(n_vocab, activation="softmax", name="next_token")(x)
 
     model = Model(inputs, outputs, name="transformer")
-    model.compile(loss="categorical_crossentropy", optimizer=Adam(learning_rate=1e-3))
+    model.compile(loss="sparse_categorical_crossentropy", optimizer=Adam(learning_rate=1e-3))
     return model
 
 

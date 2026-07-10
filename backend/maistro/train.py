@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 import numpy as np
-from keras import utils
 from keras.callbacks import Callback, ModelCheckpoint
 
 from . import architectures, config
@@ -45,6 +44,11 @@ def prepare_sequences(notes: list[str], n_vocab: int, arch: str):
 
     The input encoding depends on the architecture: the LSTMs read one normalised
     float per step, the transformer reads raw token ids and embeds them itself.
+
+    Targets stay as integer ids. Every architecture compiles with
+    `sparse_categorical_crossentropy`, so one-hotting them would allocate a
+    (194341, 3388) float32 matrix -- 2.6GB -- to say exactly what 0.8MB of int32
+    already says.
     """
     sequence_length = config.SEQUENCE_LENGTH
     pitchnames = sorted(set(notes))
@@ -58,7 +62,7 @@ def prepare_sequences(notes: list[str], n_vocab: int, arch: str):
 
     encoding = architectures.get(arch).encoding
     network_input = architectures.encode_windows(windows, n_vocab, encoding)
-    network_output = utils.to_categorical(targets, num_classes=n_vocab)
+    network_output = np.asarray(targets, dtype=np.int32)
 
     return network_input, network_output
 
