@@ -31,27 +31,57 @@ export default function StudioPage() {
         sound. That is exactly the right tool for classical piano and exactly the wrong one for
         music that lives in timbre — a synth pad, a drum break, a guitar tone. Nothing in a
         piano-note vocabulary can express &ldquo;dusty Rhodes through a tape delay.&rdquo; These
-        two models can.
+        two models can, and they answer the question of where a model should live in opposite
+        ways: one is too large to deploy, the other small enough to run inside this page.
       </p>
 
       <StaffDivider className="mt-10" />
 
       {/* -------------------------------------------------- MusicGen */}
       <section className="mt-10">
-        <h2 className="font-display text-2xl text-foreground">Text to audio — Meta MusicGen</h2>
+        <h2 className="font-display text-2xl text-foreground">
+          Text to audio — Meta MusicGen
+          {!musicgenAvailable && (
+            <span className="ml-3 align-middle text-xs tracking-[0.15em] text-brass uppercase">
+              Local only
+            </span>
+          )}
+        </h2>
         <p className="mt-3 max-w-[65ch] text-sm leading-relaxed text-muted-foreground">
           A transformer over the tokens of an audio codec, not over notes. It predicts the next
-          frame of compressed <em>waveform</em>, so it can render any genre it heard in training,
-          at the cost of never producing a score you can edit. Runs on the Python backend.
+          frame of compressed <em>waveform</em>, so it can render any genre it heard in training —
+          &ldquo;lo-fi hip hop with a dusty Rhodes and vinyl crackle,&rdquo; &ldquo;dub techno
+          chords, deep sub bass, long tape delay&rdquo; — at the cost of never producing a score
+          you can edit.
         </p>
 
         {!musicgenAvailable && (
           <div className="mt-6 border border-border bg-surface p-6">
-            <p className="text-sm text-foreground">MusicGen is not part of this deployment.</p>
-            <p className="mt-2 max-w-[60ch] text-sm text-muted-foreground">
-              It needs torch, which is 511MB — the whole serverless function is capped at 500MB,
-              and the model weights are another 2GB on top. Run the backend locally and MusicGen
-              works. Magenta, below, runs in your browser and needs nothing.
+            <p className="max-w-[62ch] text-sm leading-relaxed text-foreground">
+              MusicGen is too big to deploy, so it stays on your machine. That is the whole point
+              of putting it next to Magenta.
+            </p>
+            <p className="mt-3 max-w-[62ch] text-sm leading-relaxed text-muted-foreground">
+              It needs <span className="text-foreground">511MB of torch</span> and downloads
+              another <span className="text-foreground">2GB of weights</span> on first run. This
+              site&apos;s API is a serverless function capped at{" "}
+              <span className="text-foreground">500MB</span> — MAiSTRO&apos;s own transformer fits
+              because its weights are 7MB and its forward pass is plain NumPy. MusicGen never
+              could. Magenta, below, sidesteps the question entirely by running in your browser.
+            </p>
+
+            <StaffDivider className="mt-6" />
+
+            <p className="mt-4 text-xs tracking-[0.12em] text-muted-foreground uppercase">
+              To hear it, run the backend locally
+            </p>
+            <pre className="mt-3 overflow-x-auto bg-bg px-4 py-3 text-xs leading-relaxed text-brass">
+              <code>
+                {`pip install -r requirements-external.txt   # torch + transformers\nuvicorn api.main:app --port 8000`}
+              </code>
+            </pre>
+            <p className="mt-3 max-w-[62ch] text-xs leading-relaxed text-muted-foreground">
+              On CPU, expect roughly three seconds of compute per second of audio.
             </p>
           </div>
         )}
@@ -154,6 +184,9 @@ export default function StudioPage() {
       <section className="mt-10">
         <h2 className="font-display text-2xl text-foreground">
           In the browser — Google Magenta MelodyRNN
+          <span className="ml-3 align-middle text-xs tracking-[0.15em] text-verdigris uppercase">
+            Runs here
+          </span>
         </h2>
         <p className="mt-3 max-w-[65ch] text-sm leading-relaxed text-muted-foreground">
           The same job as MAiSTRO&apos;s LSTM — continue a melody, one note at a time — but the
