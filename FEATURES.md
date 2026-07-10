@@ -40,21 +40,29 @@ Below ~1.3 the decoder is greedy; above ~2.1 it samples from a flat tail of
 noise. **The usable band is 1.4–2.0**, and that is exactly the range the slider
 spans. Defaults: `T=1.5, top_p=0.98, top_k=40`.
 
-What it buys, over 160 generated notes:
+What it buys, averaged over 4 seeds at 160 generated notes each:
 
-| Setting | Repetition rate ↓ | Corpus KL ↓ |
-|---|---|---|
-| Greedy (the old default) | 0.357 | 0.784 |
-| `T=1.0, top_p=0.92` | 0.357 | 0.772 |
-| `T=1.5` (new default) | **0.140** | **0.446** |
-| `T=1.9` | **0.051** | **0.232** |
+| Setting | Repetition rate ↓ | Corpus KL ↓ | Unique tokens ↑ |
+|---|---|---|---|
+| Greedy (the old default) | 0.151 | 0.498 | 0.338 |
+| `T=1.0, top_p=0.92` | 0.177 | 0.503 | 0.331 |
+| `T=1.5` (new default) | **0.064** | **0.301** | **0.444** |
+| `T=1.9` | **0.024** | **0.147** | **0.570** |
 
 *Repetition rate* is the share of 4-note windows the decoder has already played.
 *Corpus KL* compares the generated pitch-class histogram against the training
 set's — lower means it sounds more like the corpus it learned from.
 
-Note the second row: `T=1.0, top_p=0.92` is byte-for-byte identical to greedy.
-That is the trap this calibration exists to avoid.
+Note the second row. `T=1.0, top_p=0.92` — the defaults you would copy from a
+text model — is **indistinguishable from greedy** (0.177 vs 0.151, well within
+the 0.13 standard deviation across seeds; on several seeds it is the identical
+sequence). That is the trap this calibration exists to avoid.
+
+Two caveats on reading these numbers. Repetition rate grows with sequence length,
+so only compare runs of equal size. And a sampled decoder diverges from the greedy
+path slowly: at 120 notes with `T=1.5` it changes only 2% of the model's decisions,
+but by 300 notes it has changed 61% of them. **Sampling matters more the longer the
+piece.**
 
 > `backend/maistro/sampling.py`
 
@@ -78,12 +86,15 @@ temperature.
 - **Seed selection** — the starting 100-note window is chosen from candidates that
   are *already* in the requested key, so generation doesn't have to fight its way there.
 
-Measured, on 160 notes asked for C major:
+Measured over 4 seeds, 160 notes each, asked for C major:
 
-| | Fraction of notes in key |
-|---|---|
-| Unconditioned | 0.72 |
-| `key=C, scale=major` | **0.96** |
+| | Fraction of notes in key | Spread across seeds |
+|---|---|---|
+| Unconditioned | 0.786 | ±0.145 |
+| `key=C, scale=major` | **0.930** | ±0.039 |
+
+The tightened spread matters as much as the raised mean: unconditioned, which key
+you get is luck of the seed. Conditioned, you get the key you asked for.
 
 Five mood presets (`serene`, `melancholic`, `triumphant`, `turbulent`, `playful`)
 bundle a temperature, scale, register and density into one choice. Their

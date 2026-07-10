@@ -89,7 +89,7 @@ export default function TrainPage() {
   return (
     <div>
       <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
-        II. Train
+        Build a model · 2
       </p>
       <h1 className="mt-3 font-display text-4xl text-foreground">Rehearsal</h1>
       <p className="mt-4 max-w-[65ch] text-muted-foreground">

@@ -20,7 +20,7 @@ export default function StudioPage() {
   return (
     <div>
       <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
-        VI. Studio
+        Compose
       </p>
       <h1 className="mt-3 font-display text-4xl text-foreground">Beyond the piano</h1>
       <p className="mt-4 max-w-[68ch] text-muted-foreground">
@@ -67,7 +67,11 @@ export default function StudioPage() {
                 />
               </Field>
 
-              <Field label="Duration" hint={`Up to ${status.max_duration}s. CPU runs near real time.`}>
+              {/* Measured on musicgen-small, CPU: ~3.5x slower than real time. */}
+              <Field
+                label="Duration"
+                hint={`Up to ${status.max_duration}s. On CPU expect roughly 3s of compute per second of audio.`}
+              >
                 <Slider
                   value={duration}
                   onChange={setDuration}

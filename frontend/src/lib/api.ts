@@ -1,4 +1,8 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+// `??` would accept an empty string, which is exactly how this was set in Vercel's
+// Production environment: every request then resolved to a relative path, and the
+// deployment answered its own /generate/options with a 404 HTML page. Treat blank
+// as unset.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://localhost:8000";
 
 export type JobState = "pending" | "running" | "done" | "error";
 
