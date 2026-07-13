@@ -5,13 +5,23 @@ import { useState } from "react";
 import { Button, MetricGrid } from "@/components/Controls";
 import { JobLog } from "@/components/JobLog";
 import { MidiPlayer } from "@/components/MidiPlayer";
+import { LocalOnly } from "@/components/LocalOnly";
 import { StaffDivider } from "@/components/StaffDivider";
 import { castVote, type VoteReveal } from "@/lib/api";
-import { useArenaPair, useLeaderboard } from "@/lib/useJob";
+import { useArenaPair, useFeature, useLeaderboard } from "@/lib/useJob";
 
 type Side = "a" | "b" | "tie";
 
 export default function ArenaPage() {
+  const { available } = useFeature("arena");
+  const gate = !available ? (
+    <LocalOnly
+      feature={"The arena"}
+      what={"Two architectures compose the same brief and you judge them blind, with Elo ratings settling which one people actually prefer."}
+      why={"It needs two trained models loaded at once and somewhere to persist votes. Neither fits in a stateless function with a read-only disk."}
+    />
+  ) : null;
+
   const pairAction = useArenaPair();
   const leaderboard = useLeaderboard();
   const queryClient = useQueryClient();
@@ -35,6 +45,10 @@ export default function ArenaPage() {
     setReveal(null);
     pairAction.start({ n_notes: 160 });
   };
+
+  // Rendered after every hook above, so the hook order does not change when
+  // capabilities load and `gate` flips from null to a panel.
+  if (gate) return <div>{gate}</div>;
 
   return (
     <div>

@@ -1,0 +1,10 @@
+# Test dependencies.
+#
+# The fast suite (tests/test_music_core.py, tests/test_serving.py) needs only what
+# the deployed function needs -- see web/requirements.txt -- which is the point: if a
+# serving module ever reaches for TensorFlow, those tests fail on the import.
+#
+# tests/test_keras_parity.py additionally needs TensorFlow, and skips itself when it
+# is absent. Install requirements.txt for that one.
+
+pytest>=8.0

@@ -51,6 +51,32 @@ export function getJob<TResult = unknown>(jobId: string): Promise<JobStatus<TRes
   return request(`/jobs/${jobId}`);
 }
 
+/* --------------------------------------------------------- capabilities */
+
+export type BackendMode = "local" | "serverless";
+
+export interface Capabilities {
+  mode: BackendMode;
+  model_loaded: boolean;
+  features: {
+    generate: boolean;
+    library: boolean;
+    arena: boolean;
+    train: boolean;
+    dataset: boolean;
+    musicgen: boolean;
+  };
+  reason: string | null;
+}
+
+/**
+ * The deployed API is a stateless function: no jobs, no filesystem, no torch. It
+ * says so here, and every page checks before offering something that cannot work.
+ */
+export function getCapabilities(): Promise<Capabilities> {
+  return request("/capabilities");
+}
+
 /* -------------------------------------------------------------- dataset */
 
 export interface DatasetStats {
@@ -166,6 +192,17 @@ export interface GenerateResult {
 
 export function startGeneration(params: GenerateParams = {}): Promise<{ job_id: string }> {
   return request("/generate", { method: "POST", body: JSON.stringify(params) });
+}
+
+/** What the serverless API returns: the MIDI inline, since it has no disk to serve from. */
+export interface SyncGenerateResult {
+  midi_base64: string;
+  metrics: GenerationMetrics;
+  config: Required<GenerateParams>;
+}
+
+export function generateSync(params: GenerateParams = {}): Promise<SyncGenerateResult> {
+  return request("/generate/sync", { method: "POST", body: JSON.stringify(params) });
 }
 
 /* ---------------------------------------------------------------- arena */

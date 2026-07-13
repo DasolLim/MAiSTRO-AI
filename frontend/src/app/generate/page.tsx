@@ -39,7 +39,7 @@ export default function GeneratePage() {
   const effectiveTemperature = temperature ?? activeMood?.temperature ?? sampling.temperature.default;
   const isGreedy = effectiveTemperature < sampling.temperature.greedy_below;
 
-  const result = generation.job?.state === "done" ? generation.job.result : null;
+  const piece = generation.piece;
 
   const handleGenerate = () => {
     generation.start({
@@ -161,17 +161,21 @@ export default function GeneratePage() {
         <p className="mt-6 text-sm text-destructive">{generation.error.message}</p>
       )}
 
-      {generation.job && (
+      {generation.started && (
         <div className="mt-8">
-          {result && (
+          {piece && (
             <>
-              <MidiPlayer filename={result.filename} label={result.filename} />
+              <MidiPlayer
+                filename={piece.filename}
+                midiBase64={piece.midiBase64}
+                label={piece.filename ?? "New composition"}
+              />
               <MetricGrid
                 metrics={{
-                  "Repetition": result.metrics.repetition_rate.toFixed(3),
-                  "Distinct pitches": result.metrics.distinct_pitch_classes,
-                  "Corpus KL": result.metrics.pitch_class_kl?.toFixed(3) ?? null,
-                  "Seed": result.config.seed ?? null,
+                  "Repetition": piece.metrics.repetition_rate.toFixed(3),
+                  "Distinct pitches": piece.metrics.distinct_pitch_classes,
+                  "Corpus KL": piece.metrics.pitch_class_kl?.toFixed(3) ?? null,
+                  "Seed": piece.config.seed ?? null,
                 }}
               />
               <p className="mt-4 max-w-[65ch] text-xs leading-relaxed text-muted-foreground">
@@ -182,7 +186,7 @@ export default function GeneratePage() {
               </p>
             </>
           )}
-          <JobLog lines={generation.job.log} />
+          <JobLog lines={generation.log} />
         </div>
       )}
     </div>
